@@ -1,0 +1,129 @@
+import numpy as np # linear algebra
+import pandas as pd
+
+import zipfile
+import os
+
+zip_path = "/content/archive.zip"  # Change to the actual file name
+extract_path = "/content/"  # Change if needed
+
+with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+    zip_ref.extractall(extract_path)
+
+print("Files extracted to:", extract_path)
+
+import PIL
+import pathlib
+import cv2
+import matplotlib.pyplot as plt
+train_path = "/content/skin-disease-datasaet/train_set"
+test_path = "/content/skin-disease-datasaet/test_set"
+
+train = pathlib.Path(train_path)
+test = pathlib.Path(test_path)
+
+sd_train_dict ={
+    "BA-cellulitis":list(train.glob("BA- cellulitis/*")),
+    "BA-impetigo":list(train.glob("BA-impetigo/*")),
+    "FU-athlete-foot":list(train.glob("FU-athlete-foot/*")),
+    "FU-nail-fungus":list(train.glob("FU-nail-fungus/*")),
+    "FU-ringworm":list(train.glob("FU-ringworm/*")),
+    "PA-cutaneous-larva-migrans":list(train.glob("PA-cutaneous-larva-migrans/*")),
+    "VI-chickenpox":list(train.glob("VI-chickenpox/*")),
+    "VI-shingles":list(train.glob("VI-shingles/*"))    
+}
+sd_test_dict ={
+    "BA-cellulitis":list(test.glob("BA- cellulitis/*")),
+    "BA-impetigo":list(test.glob("BA-impetigo/*")),
+    "FU-athlete-foot":list(test.glob("FU-athlete-foot/*")),
+    "FU-nail-fungus":list(test.glob("FU-nail-fungus/*")),
+    "FU-ringworm":list(test.glob("FU-ringworm/*")),
+    "PA-cutaneous-larva-migrans":list(test.glob("PA-cutaneous-larva-migrans/*")),
+    "VI-chickenpox":list(test.glob("VI-chickenpox/*")),
+    "VI-shingles":list(test.glob("VI-shingles/*"))    
+}
+
+labels ={
+    "BA-cellulitis":0,
+    "BA-impetigo":1,
+    "FU-athlete-foot":2,
+    "FU-nail-fungus":3,
+    "FU-ringworm":4,
+    "PA-cutaneous-larva-migrans":5,
+    "VI-chickenpox":6,
+    "VI-shingles":7    
+}
+
+
+img_size = (224,224)
+x,y=[],[]
+
+for name, images in sd_train_dict.items():
+    for image in images:
+        img = cv2.imread(str(image))
+        re_img = cv2.resize(img,img_size)
+        x.append(re_img)
+        y.append(labels[name])
+xtest,ytest=[],[]
+
+for name, images in sd_test_dict.items():
+    for image in images:
+        img = cv2.imread(str(image))
+        re_img = cv2.resize(img,img_size)
+        xtest.append(re_img)
+        ytest.append(labels[name])
+
+x_train = np.array(x,dtype=float)/255.0
+x_test = np.array(xtest,dtype=float)/255.0
+y_train = np.array(y)
+y_test = np.array(ytest)
+
+
+mobileNet = "https://www.kaggle.com/models/google/mobilenet-v2/TensorFlow2/tf2-preview-feature-vector/4"
+
+import tensorflow_hub as hub
+from tensorflow import keras 
+import tensorflow as tf
+import tf_keras as tfk
+
+mNet = hub.KerasLayer(mobileNet, input_shape=(224, 224, 3), trainable=False)
+
+model  = tfk.Sequential([
+    mNet,
+    tfk.layers.Dense(170,'relu'),
+    tfk.layers.Dense(8,'softmax')
+])
+
+model.compile(optimizer='adam',loss='sparse_categorical_crossentropy',metrics=["accuracy"])
+
+model.fit(x_train,y_train,epochs=5)
+
+yp= model.predict(x_test)
+y_pred_classes = yp.argmax(axis=1)
+
+import cv2
+import numpy as np
+import tensorflow as tf
+
+def preprocess_image(image_path, img_size=(224, 224)):
+    img = cv2.imread(image_path)  # Read the image
+    if img is None:
+        raise ValueError(f"Image not found or unable to load: {image_path}")  # Raise error if image is invalid
+    img = cv2.resize(img, img_size)  # Resize to match model input
+    img = img / 255.0  # Normalize pixel values
+    img = np.expand_dims(img, axis=0)  # Add batch dimension
+    return img
+
+
+# Function to predict the disease
+def predict_disease(model, image_path, labels_dict):
+    img = preprocess_image(image_path)
+    prediction = model.predict(img)
+    predicted_class = np.argmax(prediction)  # Get the highest probability class
+    disease_name = list(labels_dict.keys())[list(labels_dict.values()).index(predicted_class)]
+    return disease_name
+
+# Example usage
+image_path = "/content/S_0618_impetigo_on_face_of_child_M.2e16d0ba.fi.width-320_CpIcgpI.jpg"  # Replace with your image path
+disease = predict_disease(model, image_path, labels)
+print(f"Predicted Disease: {disease}")
